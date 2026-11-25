@@ -1,6 +1,6 @@
 import { NextResponse, connection } from "next/server";
-import { sql } from "../../../../../../lib/db";
-import { isAuthenticated } from "../../../../../../lib/auth";
+import { sql } from "../../../../lib/db";
+import { isAuthenticated } from "../../../../lib/auth";
 
 export async function GET(request, { params }) {
   await connection();
