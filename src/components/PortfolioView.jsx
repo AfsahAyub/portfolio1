@@ -38,6 +38,56 @@ function iconFor(title) {
   return "✧";
 }
 
+function EditorBox({
+  editing,
+  value,
+  setValue,
+  busy,
+  save,
+  cancelEdit,
+}) {
+  return (
+    <div
+      id="portfolio-editor"
+      className="rounded-2xl border border-[#E9C99B]/40 bg-[#302943] p-5"
+    >
+      <h4 className="mb-4 font-semibold text-[#E9C99B]">
+        {editing?.type?.toLowerCase().includes("section")
+          ? "Edit Section"
+          : "Edit Information"}
+      </h4>
+
+      <textarea
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        rows={5}
+        spellCheck={true}
+        placeholder="Write your information here..."
+        className="w-full rounded-xl border border-white/20 bg-[#0B1026] p-4 text-white outline-none focus:border-[#E9C99B]"
+      />
+
+      <div className="mt-4 flex flex-wrap gap-3">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={save}
+          className="rounded-xl bg-[#E9C99B] px-6 py-3 font-bold text-[#0B1026] disabled:opacity-50"
+        >
+          {busy ? "Saving..." : "Save Changes"}
+        </button>
+
+        <button
+          type="button"
+          onClick={cancelEdit}
+          className="rounded-xl bg-slate-600 px-6 py-3"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function PortfolioView({
   sections: initialSections = [],
   items: initialItems = [],
@@ -89,8 +139,15 @@ export default function PortfolioView({
       )
     );
 
+    const updatedItems = allItems.flat();
+
     setSections(allSections);
-    setItems(allItems.flat());
+    setItems(updatedItems);
+
+    return {
+      sections: allSections,
+      items: updatedItems,
+    };
   }
 
   function startEdit(type, sectionId, itemId, text = "") {
@@ -103,7 +160,7 @@ export default function PortfolioView({
         behavior: "smooth",
         block: "center",
       });
-    }, 50);
+    }, 100);
   }
 
   function cancelEdit() {
@@ -124,35 +181,86 @@ export default function PortfolioView({
 
     try {
       const { type, sectionId, itemId } = editing;
+      const savedValue = value.trim();
+
+      const previousSectionIds = new Set(
+        sections.map((section) => String(section.id))
+      );
+
+      const previousItemIds = new Set(
+        items
+          .filter(
+            (item) =>
+              String(item.section_id) === String(sectionId)
+          )
+          .map((item) => String(item.id))
+      );
 
       if (type === "addSection") {
         await api("/api/sections", "POST", {
-          title: value.trim(),
+          title: savedValue,
         });
       }
 
       if (type === "editSection") {
         await api("/api/sections", "PATCH", {
           id: sectionId,
-          title: value.trim(),
+          title: savedValue,
         });
       }
 
       if (type === "addItem") {
         await api(`/api/sections/${sectionId}/items`, "POST", {
-          name: value,
+          name: savedValue,
         });
       }
 
       if (type === "editItem") {
         await api(`/api/sections/${sectionId}/items`, "PATCH", {
-          itemId,
-          name: value,
+          id: itemId,
+          name: savedValue,
         });
       }
 
-      await refreshData();
+      const updatedData = await refreshData();
+
+      let targetSectionId = sectionId;
+      let targetItemId = itemId;
+
+      if (type === "addSection") {
+        const newSection = updatedData.sections.find(
+          (section) =>
+            !previousSectionIds.has(String(section.id))
+        );
+
+        targetSectionId = newSection?.id;
+      }
+
+      if (type === "addItem") {
+        const newItem = updatedData.items.find(
+          (item) =>
+            String(item.section_id) === String(sectionId) &&
+            !previousItemIds.has(String(item.id))
+        );
+
+        targetItemId = newItem?.id;
+      }
+
       cancelEdit();
+
+      setTimeout(() => {
+        const target = targetItemId
+          ? document.getElementById(`item-${targetItemId}`)
+          : targetSectionId
+            ? document.getElementById(`section-${targetSectionId}`)
+            : document.getElementById("portfolio");
+
+        (target || document.getElementById("portfolio"))
+          ?.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+      }, 300);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -163,9 +271,13 @@ export default function PortfolioView({
   async function deleteSection(id) {
     if (!editingEnabled || busy) return;
 
-    if (!window.confirm(
-      "Poora section aur uski information delete ho jayegi. Continue?"
-    )) return;
+    if (
+      !window.confirm(
+        "Poora section aur uski information delete ho jayegi. Continue?"
+      )
+    ) {
+      return;
+    }
 
     setBusy(true);
     setError("");
@@ -184,15 +296,17 @@ export default function PortfolioView({
   async function deleteItem(sectionId, itemId) {
     if (!editingEnabled || busy) return;
 
-    if (!window.confirm("Ye information delete karni hai?")) return;
+    if (!window.confirm("Ye information delete karni hai?")) {
+      return;
+    }
 
     setBusy(true);
     setError("");
 
     try {
       await api(`/api/sections/${sectionId}/items`, "DELETE", {
-        itemId,
-      });
+  itemId: itemId,
+});
 
       setItems((previous) =>
         previous.filter((item) => item.id !== itemId)
@@ -204,49 +318,6 @@ export default function PortfolioView({
     } finally {
       setBusy(false);
     }
-  }
-
-  function EditorBox() {
-    return (
-      <div
-        id="portfolio-editor"
-        className="rounded-2xl border border-[#E9C99B]/40 bg-[#302943] p-5"
-      >
-        <h4 className="mb-4 font-semibold text-[#E9C99B]">
-          {editing?.type?.includes("Section")
-            ? "Edit Section"
-            : "Edit Information"}
-        </h4>
-
-        <textarea
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          rows={5}
-          spellCheck={true}
-          placeholder="Write your information here..."
-          className="w-full rounded-xl border border-white/20 bg-[#0B1026] p-4 text-white outline-none focus:border-[#E9C99B]"
-        />
-
-        <div className="mt-4 flex flex-wrap gap-3">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={save}
-            className="rounded-xl bg-[#E9C99B] px-6 py-3 font-bold text-[#0B1026] disabled:opacity-50"
-          >
-            {busy ? "Saving..." : "Save Changes"}
-          </button>
-
-          <button
-            type="button"
-            onClick={cancelEdit}
-            className="rounded-xl bg-slate-600 px-6 py-3"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    );
   }
 
   const aboutSection = sections.find(
@@ -421,10 +492,19 @@ export default function PortfolioView({
           {editingEnabled && (
             <div className="mb-8">
               {editing?.type === "addSection" ? (
-                <EditorBox />
+                <EditorBox
+                  editing={editing}
+                  value={value}
+                  setValue={setValue}
+                  busy={busy}
+                  save={save}
+                  cancelEdit={cancelEdit}
+                />
               ) : (
                 <button
-                  onClick={() => startEdit("addSection", null, null)}
+                  onClick={() =>
+                    startEdit("addSection", null, null)
+                  }
                   className="rounded-xl bg-[#C7797E] px-6 py-3 font-bold text-white"
                 >
                   + Add New Section
@@ -446,6 +526,7 @@ export default function PortfolioView({
               return (
                 <section
                   key={section.id}
+                  id={`section-${section.id}`}
                   className="overflow-hidden rounded-[2rem] border border-[#E9C99B]/15 bg-[#1B1D3B]"
                 >
                   {/* SECTION HEADING */}
@@ -506,7 +587,14 @@ export default function PortfolioView({
                     {editing?.sectionId === section.id &&
                       editingEnabled &&
                       ["addItem", "editSection"].includes(editing.type) && (
-                        <EditorBox />
+                        <EditorBox
+                          editing={editing}
+                          value={value}
+                          setValue={setValue}
+                          busy={busy}
+                          save={save}
+                          cancelEdit={cancelEdit}
+                        />
                       )}
 
                     <div
@@ -519,12 +607,20 @@ export default function PortfolioView({
                       {sectionItems.map((item, itemIndex) => (
                         <article
                           key={item.id}
+                          id={`item-${item.id}`}
                           className="rounded-2xl border border-[#E9C99B]/15 bg-[#26213E] p-6 transition duration-300 hover:-translate-y-1 hover:border-[#C7797E]/50"
                         >
                           {editingEnabled &&
                           editing?.type === "editItem" &&
                           editing.itemId === item.id ? (
-                            <EditorBox />
+                            <EditorBox
+                              editing={editing}
+                              value={value}
+                              setValue={setValue}
+                              busy={busy}
+                              save={save}
+                              cancelEdit={cancelEdit}
+                            />
                           ) : (
                             <>
                               <p className="font-serif text-xl text-[#E9C99B]">

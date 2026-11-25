@@ -1,9 +1,9 @@
 
-import { NextResponse } from "next/server";
-import { connection } from "next/server";
+import { NextResponse, connection } from "next/server";
 import { sql } from "../../../../../../lib/db";
+import { isAuthenticated } from "../../../../../../lib/auth";
 
-// Get section items
+// Get information inside a section
 export async function GET(request, { params }) {
   try {
     await connection();
@@ -19,7 +19,8 @@ export async function GET(request, { params }) {
     }
 
     const items = await sql`
-      SELECT * FROM section_items
+      SELECT id, section_id, content, position
+      FROM section_items
       WHERE section_id = ${sectionId}
       ORDER BY position, id
     `;
@@ -38,15 +39,24 @@ export async function GET(request, { params }) {
 // Add information
 export async function POST(request, { params }) {
   try {
+    await connection();
+
+    if (!(await isAuthenticated())) {
+      return NextResponse.json(
+        { error: "Please login first." },
+        { status: 401 }
+      );
+    }
+
     const { id } = await params;
     const sectionId = Number(id);
-    const { name } = await request.json();
+    const body = await request.json();
+    const name = body.name?.trim();
 
     if (
       !Number.isSafeInteger(sectionId) ||
       sectionId <= 0 ||
-      typeof name !== "string" ||
-      !name.replace(/<[^>]*>/g, "").trim()
+      !name
     ) {
       return NextResponse.json(
         { error: "Valid information required" },
@@ -54,15 +64,21 @@ export async function POST(request, { params }) {
       );
     }
 
-    const content = JSON.stringify({ name: name.trim() });
-
     const result = await sql`
-      INSERT INTO section_items (section_id, content)
-      VALUES (${sectionId}, ${content}::jsonb)
-      RETURNING *
+      INSERT INTO section_items (section_id, content, position)
+      VALUES (
+        ${sectionId},
+        ${JSON.stringify({ name })}::jsonb,
+        (
+          SELECT COALESCE(MAX(position), 0) + 1
+          FROM section_items
+          WHERE section_id = ${sectionId}
+        )
+      )
+      RETURNING id, section_id, content, position
     `;
 
-    return NextResponse.json(result[0]);
+    return NextResponse.json(result[0], { status: 201 });
   } catch (error) {
     console.error("ADD ITEM ERROR:", error);
 
@@ -73,21 +89,32 @@ export async function POST(request, { params }) {
   }
 }
 
-// Edit individual information
+// Edit existing information
 export async function PATCH(request, { params }) {
   try {
+    await connection();
+
+    if (!(await isAuthenticated())) {
+      return NextResponse.json(
+        { error: "Please login first." },
+        { status: 401 }
+      );
+    }
+
     const { id } = await params;
     const sectionId = Number(id);
-    const { itemId, name } = await request.json();
-    const itemNumber = Number(itemId);
+    const body = await request.json();
+
+    // Frontend sends id; also accept itemId
+    const itemId = Number(body.id ?? body.itemId);
+    const name = body.name?.trim();
 
     if (
       !Number.isSafeInteger(sectionId) ||
       sectionId <= 0 ||
-      !Number.isSafeInteger(itemNumber) ||
-      itemNumber <= 0 ||
-      typeof name !== "string" ||
-      !name.replace(/<[^>]*>/g, "").trim()
+      !Number.isSafeInteger(itemId) ||
+      itemId <= 0 ||
+      !name
     ) {
       return NextResponse.json(
         { error: "Valid information required" },
@@ -95,19 +122,22 @@ export async function PATCH(request, { params }) {
       );
     }
 
-    const content = JSON.stringify({ name: name.trim() });
-
     const result = await sql`
       UPDATE section_items
-      SET content = content || ${content}::jsonb
-      WHERE id = ${itemNumber}
-      AND section_id = ${sectionId}
-      RETURNING *
+      SET content = jsonb_set(
+        COALESCE(content, '{}'::jsonb),
+        '{name}',
+        to_jsonb(${name}::text),
+        true
+      )
+      WHERE id = ${itemId}
+        AND section_id = ${sectionId}
+      RETURNING id, section_id, content, position
     `;
 
     if (!result.length) {
       return NextResponse.json(
-        { error: "Information not found" },
+        { error: "Item not found." },
         { status: 404 }
       );
     }
@@ -123,19 +153,30 @@ export async function PATCH(request, { params }) {
   }
 }
 
-// Delete individual information
+// Delete information
 export async function DELETE(request, { params }) {
   try {
+    await connection();
+
+    if (!(await isAuthenticated())) {
+      return NextResponse.json(
+        { error: "Please login first." },
+        { status: 401 }
+      );
+    }
+
     const { id } = await params;
     const sectionId = Number(id);
-    const { itemId } = await request.json();
-    const itemNumber = Number(itemId);
+    const body = await request.json();
+
+    // Accept both id and itemId
+    const itemId = Number(body.id ?? body.itemId);
 
     if (
       !Number.isSafeInteger(sectionId) ||
       sectionId <= 0 ||
-      !Number.isSafeInteger(itemNumber) ||
-      itemNumber <= 0
+      !Number.isSafeInteger(itemId) ||
+      itemId <= 0
     ) {
       return NextResponse.json(
         { error: "Valid item ID required" },
@@ -145,14 +186,14 @@ export async function DELETE(request, { params }) {
 
     const result = await sql`
       DELETE FROM section_items
-      WHERE id = ${itemNumber}
-      AND section_id = ${sectionId}
+      WHERE id = ${itemId}
+        AND section_id = ${sectionId}
       RETURNING id
     `;
 
     if (!result.length) {
       return NextResponse.json(
-        { error: "Information not found" },
+        { error: "Item not found." },
         { status: 404 }
       );
     }
