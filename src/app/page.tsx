@@ -1,5 +1,7 @@
+
 import { Suspense } from "react";
 import { connection } from "next/server";
+import { redirect } from "next/navigation";
 import { sql } from "../../lib/db";
 import { isAuthenticated } from "../../lib/auth";
 import PortfolioView from "../components/PortfolioView";
@@ -8,6 +10,10 @@ async function PortfolioData() {
   await connection();
 
   const isAdmin = await isAuthenticated();
+
+  if (!isAdmin) {
+    redirect("/login");
+  }
 
   const sections = await sql`
     SELECT id, title, type, position, is_visible

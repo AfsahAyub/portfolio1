@@ -45,7 +45,7 @@ export default function PortfolioView({
 }) {
   const [sections, setSections] = useState(initialSections);
   const [items, setItems] = useState(initialItems);
-  const [preview, setPreview] = useState(false);
+  const [preview, setPreview] = useState(true);
   const [editing, setEditing] = useState(null);
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
