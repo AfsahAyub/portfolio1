@@ -1,134 +1,130 @@
+import { NextResponse, connection } from "next/server";
+import { sql } from "../../../../../../lib/db";
+import { isAuthenticated } from "../../../../../../lib/auth";
 
-import { NextResponse } from "next/server";
-import { connection } from "next/server";
-import { sql } from "../../../../lib/db";
+export async function GET(request, { params }) {
+  await connection();
 
-// All sections
-export async function GET() {
-  try {
-    await connection();
+  const { id } = await params;
 
-    const sections = await sql`
-      SELECT * FROM sections
-      ORDER BY position, id
-    `;
+  const items = await sql`
+    SELECT id, section_id, content, position
+    FROM section_items
+    WHERE section_id = ${id}
+    ORDER BY position, id
+  `;
 
-    return NextResponse.json(sections);
-  } catch (error) {
-    console.error("GET SECTIONS ERROR:", error);
-
-    return NextResponse.json(
-      { error: "Sections load nahi hue" },
-      { status: 500 }
-    );
-  }
+  return NextResponse.json(items);
 }
 
-// Add new section
-export async function POST(request) {
-  try {
-    const { title } = await request.json();
+export async function POST(request, { params }) {
+  await connection();
 
-    if (typeof title !== "string" || !title.trim()) {
-      return NextResponse.json(
-        { error: "Section name required" },
-        { status: 400 }
-      );
-    }
-
-    const result = await sql`
-      INSERT INTO sections (title, type)
-      VALUES (${title.trim()}, 'custom')
-      RETURNING *
-    `;
-
-    return NextResponse.json(result[0]);
-  } catch (error) {
-    console.error("ADD SECTION ERROR:", error);
-
+  if (!(await isAuthenticated())) {
     return NextResponse.json(
-      { error: "Section add nahi hua" },
-      { status: 500 }
+      { error: "Please login first." },
+      { status: 401 }
     );
   }
+
+  const { id } = await params;
+  const body = await request.json();
+  const name = body.name?.trim();
+
+  if (!name) {
+    return NextResponse.json(
+      { error: "Item name is required." },
+      { status: 400 }
+    );
+  }
+
+  const result = await sql`
+    INSERT INTO section_items (section_id, content, position)
+    VALUES (
+      ${id},
+      ${JSON.stringify({ name })}::jsonb,
+      (
+        SELECT COALESCE(MAX(position), 0) + 1
+        FROM section_items
+        WHERE section_id = ${id}
+      )
+    )
+    RETURNING id, section_id, content, position
+  `;
+
+  return NextResponse.json(result[0], { status: 201 });
 }
 
-// Edit section name
-export async function PATCH(request) {
-  try {
-    const { id, title } = await request.json();
-    const sectionId = Number(id);
+export async function PATCH(request, { params }) {
+  await connection();
 
-    if (
-      !Number.isSafeInteger(sectionId) ||
-      sectionId <= 0 ||
-      typeof title !== "string" ||
-      !title.trim()
-    ) {
-      return NextResponse.json(
-        { error: "Valid section information required" },
-        { status: 400 }
-      );
-    }
-
-    const result = await sql`
-      UPDATE sections
-      SET title = ${title.trim()}
-      WHERE id = ${sectionId}
-      RETURNING *
-    `;
-
-    if (!result.length) {
-      return NextResponse.json(
-        { error: "Section not found" },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json(result[0]);
-  } catch (error) {
-    console.error("EDIT SECTION ERROR:", error);
-
+  if (!(await isAuthenticated())) {
     return NextResponse.json(
-      { error: "Section edit nahi hua" },
-      { status: 500 }
+      { error: "Please login first." },
+      { status: 401 }
     );
   }
+
+  const { id } = await params;
+  const body = await request.json();
+  const itemId = body.id;
+  const name = body.name?.trim();
+
+  if (!itemId || !name) {
+    return NextResponse.json(
+      { error: "Item ID and name are required." },
+      { status: 400 }
+    );
+  }
+
+  const result = await sql`
+    UPDATE section_items
+    SET content = jsonb_set(
+      COALESCE(content, '{}'::jsonb),
+      '{name}',
+      to_jsonb(${name}::text),
+      true
+    )
+    WHERE id = ${itemId}
+      AND section_id = ${id}
+    RETURNING id, section_id, content, position
+  `;
+
+  if (!result.length) {
+    return NextResponse.json(
+      { error: "Item not found." },
+      { status: 404 }
+    );
+  }
+
+  return NextResponse.json(result[0]);
 }
 
-// Delete section
-export async function DELETE(request) {
-  try {
-    const { id } = await request.json();
-    const sectionId = Number(id);
+export async function DELETE(request, { params }) {
+  await connection();
 
-    if (!Number.isSafeInteger(sectionId) || sectionId <= 0) {
-      return NextResponse.json(
-        { error: "Valid section ID required" },
-        { status: 400 }
-      );
-    }
-
-    const result = await sql`
-      DELETE FROM sections
-      WHERE id = ${sectionId}
-      RETURNING id
-    `;
-
-    if (!result.length) {
-      return NextResponse.json(
-        { error: "Section not found" },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("DELETE SECTION ERROR:", error);
-
+  if (!(await isAuthenticated())) {
     return NextResponse.json(
-      { error: "Section delete nahi hua" },
-      { status: 500 }
+      { error: "Please login first." },
+      { status: 401 }
     );
   }
+
+  const { id } = await params;
+  const body = await request.json();
+
+  if (!body.id) {
+    return NextResponse.json(
+      { error: "Item ID is required." },
+      { status: 400 }
+    );
+  }
+
+  await sql`
+    DELETE FROM section_items
+    WHERE id = ${body.id}
+      AND section_id = ${id}
+  `;
+
+  return NextResponse.json({ success: true });
 }

@@ -3,13 +3,6 @@
 
 import { useState } from "react";
 
-const colors = {
-  midnight: "#0B1026",
-  plum: "#26213E",
-  copper: "#C7797E",
-  gold: "#E9C99B",
-};
-
 function cleanText(value) {
   return String(value ?? "")
     .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
@@ -36,32 +29,29 @@ function itemText(content) {
 
 function iconFor(title) {
   const name = title.toLowerCase();
-  if (name.includes("skill")) return "✳";
-  if (name.includes("education")) return "✦";
-  if (name.includes("experience")) return "◈";
-  if (name.includes("certificate")) return "✺";
-  if (name.includes("project")) return "◇";
-  if (name.includes("award")) return "★";
-  return "❖";
+  if (name.includes("skill")) return "✦";
+  if (name.includes("education")) return "🎓";
+  if (name.includes("experience")) return "💼";
+  if (name.includes("certificate")) return "🏅";
+  if (name.includes("project")) return "🔬";
+  if (name.includes("award")) return "🏆";
+  return "✧";
 }
 
 export default function PortfolioView({
   sections: initialSections = [],
   items: initialItems = [],
+  isAdmin = false,
 }) {
   const [sections, setSections] = useState(initialSections);
   const [items, setItems] = useState(initialItems);
-
-  // Local development editing only
-  const canEdit = process.env.NODE_ENV !== "production";
-
   const [preview, setPreview] = useState(false);
   const [editing, setEditing] = useState(null);
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const editingEnabled = canEdit && !preview;
+  const editingEnabled = isAdmin && !preview;
 
   async function api(url, method = "GET", body) {
     const response = await fetch(url, {
@@ -109,12 +99,10 @@ export default function PortfolioView({
     setError("");
 
     setTimeout(() => {
-      document
-        .getElementById("portfolio-editor")
-        ?.scrollIntoView({
-          behavior: "smooth",
-          block: "center",
-        });
+      document.getElementById("portfolio-editor")?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
     }, 50);
   }
 
@@ -151,19 +139,16 @@ export default function PortfolioView({
       }
 
       if (type === "addItem") {
-        await api(
-          `/api/sections/${sectionId}/items`,
-          "POST",
-          { name: value }
-        );
+        await api(`/api/sections/${sectionId}/items`, "POST", {
+          name: value,
+        });
       }
 
       if (type === "editItem") {
-        await api(
-          `/api/sections/${sectionId}/items`,
-          "PATCH",
-          { itemId, name: value }
-        );
+        await api(`/api/sections/${sectionId}/items`, "PATCH", {
+          itemId,
+          name: value,
+        });
       }
 
       await refreshData();
@@ -199,19 +184,15 @@ export default function PortfolioView({
   async function deleteItem(sectionId, itemId) {
     if (!editingEnabled || busy) return;
 
-    if (!window.confirm("Ye information delete karni hai?")) {
-      return;
-    }
+    if (!window.confirm("Ye information delete karni hai?")) return;
 
     setBusy(true);
     setError("");
 
     try {
-      await api(
-        `/api/sections/${sectionId}/items`,
-        "DELETE",
-        { itemId }
-      );
+      await api(`/api/sections/${sectionId}/items`, "DELETE", {
+        itemId,
+      });
 
       setItems((previous) =>
         previous.filter((item) => item.id !== itemId)
@@ -276,23 +257,11 @@ export default function PortfolioView({
     (item) => item.section_id === aboutSection?.id
   );
 
-  const visibleSections = sections;
-
-  const skillSection = sections.find(
-    (s) => s.title.toLowerCase().includes("skill")
-  );
-
-  const skillCount = items.filter(
-    (item) => item.section_id === skillSection?.id
-  ).length;
-
   return (
     <main className="min-h-screen bg-[#0B1026] text-[#F4F0EA]">
-
       {/* NAVIGATION */}
       <header className="sticky top-0 z-50 border-b border-white/10 bg-[#0B1026]/95 backdrop-blur-xl">
         <nav className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-5">
-
           <a href="#home" className="font-serif text-2xl font-bold">
             AFSAH<span className="text-[#C7797E]">.</span>
           </a>
@@ -304,17 +273,26 @@ export default function PortfolioView({
             <a href="#contact">Contact</a>
           </div>
 
-          {canEdit && (
-            <button
-              onClick={() => {
-                setPreview(!preview);
-                cancelEdit();
-              }}
-              className="rounded-full border border-[#E9C99B]/40 px-5 py-2 text-sm text-[#E9C99B]"
+          <div className="flex flex-wrap items-center gap-3">
+            {isAdmin && (
+              <button
+                onClick={() => {
+                  setPreview(!preview);
+                  cancelEdit();
+                }}
+                className="rounded-full border border-[#E9C99B]/40 px-5 py-2 text-sm text-[#E9C99B]"
+              >
+                {preview ? "Enable Editing" : "Visitor Preview"}
+              </button>
+            )}
+
+            <a
+              href={isAdmin ? "/logout" : "/login"}
+              className="rounded-full bg-[#E9C99B] px-5 py-2 text-sm font-bold text-[#0B1026]"
             >
-              {preview ? "Enable Editing" : "Visitor Preview"}
-            </button>
-          )}
+              {isAdmin ? "Logout" : "Login"}
+            </a>
+          </div>
         </nav>
       </header>
 
@@ -331,7 +309,6 @@ export default function PortfolioView({
         <div className="absolute inset-0 -z-10 bg-gradient-to-r from-[#0B1026] via-[#0B1026]/95 to-[#26213E]/70" />
 
         <div className="mx-auto grid max-w-7xl items-center gap-12 px-6 py-28 lg:grid-cols-2">
-
           <div>
             <p className="mb-6 text-sm uppercase tracking-[0.2em] text-[#E9C99B]">
               Plant Sciences • Research • Innovation
@@ -362,7 +339,7 @@ export default function PortfolioView({
               href="#portfolio"
               className="mt-9 inline-block rounded-full bg-gradient-to-r from-[#C7797E] to-[#E9C99B] px-8 py-4 font-bold text-[#0B1026]"
             >
-              Explore My Portfolio ↗
+              Explore My Portfolio →
             </a>
           </div>
 
@@ -382,11 +359,11 @@ export default function PortfolioView({
             </div>
 
             <div className="mt-4 rounded-xl bg-[#26213E] p-5">
-              <p className="font-serif text-3xl text-[#E9C99B]">
-                {skillCount}
+              <p className="font-serif text-2xl text-[#E9C99B]">
+                Research & Innovation
               </p>
-              <p className="text-sm text-slate-300">
-                Research & Technical Skills
+              <p className="mt-2 text-sm text-slate-300">
+                Plant Sciences • Biotechnology • Environmental Research
               </p>
             </div>
           </div>
@@ -396,7 +373,6 @@ export default function PortfolioView({
       {/* ABOUT */}
       <section id="about" className="px-6 py-20">
         <div className="mx-auto max-w-7xl rounded-3xl border border-[#E9C99B]/15 bg-[#26213E] p-8 md:p-12">
-
           <p className="text-sm uppercase tracking-widest text-[#C7797E]">
             Discover My Story
           </p>
@@ -415,7 +391,7 @@ export default function PortfolioView({
             href="#portfolio"
             className="mt-5 inline-block text-sm text-[#E9C99B] underline"
           >
-            Manage detailed About Me information below
+            Explore my detailed information below
           </a>
         </div>
       </section>
@@ -423,7 +399,6 @@ export default function PortfolioView({
       {/* PORTFOLIO */}
       <section id="portfolio" className="bg-[#10142D] px-6 py-24">
         <div className="mx-auto max-w-7xl">
-
           <div className="mb-12 text-center">
             <p className="text-sm uppercase tracking-widest text-[#C7797E]">
               Academic Journey
@@ -449,9 +424,7 @@ export default function PortfolioView({
                 <EditorBox />
               ) : (
                 <button
-                  onClick={() =>
-                    startEdit("addSection", null, null)
-                  }
+                  onClick={() => startEdit("addSection", null, null)}
                   className="rounded-xl bg-[#C7797E] px-6 py-3 font-bold text-white"
                 >
                   + Add New Section
@@ -461,7 +434,7 @@ export default function PortfolioView({
           )}
 
           <div className="space-y-10">
-            {visibleSections.map((section, index) => {
+            {sections.map((section, index) => {
               const sectionItems = items.filter(
                 (item) => item.section_id === section.id
               );
@@ -475,10 +448,8 @@ export default function PortfolioView({
                   key={section.id}
                   className="overflow-hidden rounded-[2rem] border border-[#E9C99B]/15 bg-[#1B1D3B]"
                 >
-
                   {/* SECTION HEADING */}
                   <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 bg-gradient-to-r from-[#30243F] to-[#1B1D3B] p-7">
-
                     <div className="flex items-center gap-4">
                       <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-[#E9C99B]/30 bg-[#E9C99B]/10 text-2xl text-[#E9C99B]">
                         {iconFor(section.title)}
@@ -495,7 +466,7 @@ export default function PortfolioView({
                       </div>
                     </div>
 
-                    {editingEnabled ? (
+                    {editingEnabled && (
                       <div className="flex flex-wrap gap-2">
                         <button
                           onClick={() =>
@@ -517,7 +488,7 @@ export default function PortfolioView({
                           }
                           className="rounded-lg bg-[#E9C99B]/20 px-4 py-2 text-sm text-[#E9C99B]"
                         >
-                          ✏ Edit
+                          ✎ Edit
                         </button>
 
                         <button
@@ -528,26 +499,23 @@ export default function PortfolioView({
                           Delete
                         </button>
                       </div>
-                    ) : (
-                      <span className="text-sm text-[#E9C99B]">
-                        {sectionItems.length} Entries
-                      </span>
                     )}
                   </div>
 
                   <div className="space-y-5 p-6 md:p-9">
-
                     {editing?.sectionId === section.id &&
                       editingEnabled &&
-                      ["addItem", "editSection"].includes(
-                        editing.type
-                      ) && <EditorBox />}
+                      ["addItem", "editSection"].includes(editing.type) && (
+                        <EditorBox />
+                      )}
 
-                    <div className={
-                      isSkills
-                        ? "grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
-                        : "grid gap-5 md:grid-cols-2"
-                    }>
+                    <div
+                      className={
+                        isSkills
+                          ? "grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+                          : "grid gap-5 md:grid-cols-2"
+                      }
+                    >
                       {sectionItems.map((item, itemIndex) => (
                         <article
                           key={item.id}
@@ -569,7 +537,6 @@ export default function PortfolioView({
 
                               {editingEnabled && (
                                 <div className="mt-5 flex gap-3 border-t border-white/10 pt-4">
-
                                   <button
                                     onClick={() =>
                                       startEdit(
@@ -581,7 +548,7 @@ export default function PortfolioView({
                                     }
                                     className="rounded-lg bg-[#E9C99B]/20 px-4 py-2 text-sm text-[#E9C99B]"
                                   >
-                                    ✏ Edit
+                                    ✎ Edit
                                   </button>
 
                                   <button
@@ -593,7 +560,6 @@ export default function PortfolioView({
                                   >
                                     Delete
                                   </button>
-
                                 </div>
                               )}
                             </>
@@ -636,13 +602,12 @@ export default function PortfolioView({
           href="mailto:afsahayub45@gmail.com"
           className="mt-8 inline-block rounded-full bg-gradient-to-r from-[#C7797E] to-[#E9C99B] px-8 py-4 font-bold text-[#0B1026]"
         >
-          Send Me an Email ↗
+          Send Me an Email →
         </a>
       </section>
 
       <footer className="border-t border-white/10 p-7 text-center text-sm text-slate-400">
-        © {new Date().getFullYear()} Afsah Ayub.
-        All rights reserved.
+        © {new Date().getFullYear()} Afsah Ayub. All rights reserved.
       </footer>
     </main>
   );
